@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MP Digest — Пульт</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --leather-1:#3a332d; --leather-2:#29241f;
+    --panel-1:#4b4a51; --panel-2:#37363c; --panel-3:#2b2a30;
+    --brass-1:#f7dfa0; --brass-2:#d4ab4e; --brass-3:#a97f22;
+    --brass-text:#ffd97a;
+    --led-green:#52e88f; --led-amber:#ffc95e; --led-red:#ff6b57;
+    --lcd-bg:#9fb39a; --lcd-ink:#22301f;
+    --ink:#e9e2cf;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:
+      repeating-linear-gradient(48deg, rgba(0,0,0,.20) 0 2px, transparent 2px 6px),
+      repeating-linear-gradient(-48deg, rgba(255,235,200,.03) 0 2px, transparent 2px 6px),
+      linear-gradient(160deg,#403a33 0%,#322c26 45%,#25201b 100%);
+    color:var(--ink);min-height:100vh;
+  }
+  body::before{content:"";position:fixed;inset:8px;border-radius:22px;pointer-events:none;
+    border:1.5px dashed rgba(233,222,180,.13);z-index:0}
+  .wrap{position:relative;z-index:1;padding:14px 14px 120px}
+
+  .app-head{text-align:center;padding:10px 8px 16px}
+  .plate{display:inline-block;padding:10px 28px;border-radius:11px;
+    background:linear-gradient(#4f4d55,#38373e 55%,#2d2c32);border:1px solid #17161a;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.18),inset 0 -1px 0 rgba(0,0,0,.55),0 6px 14px rgba(0,0,0,.5)}
+  .ttl{font-family:Georgia,serif;font-size:21px;font-weight:700;letter-spacing:.06em;
+    color:var(--brass-text);text-shadow:0 0 12px rgba(255,205,110,.35),0 1px 0 rgba(0,0,0,.8)}
+  .sub{font-size:11.5px;color:#b7ae97;margin-top:4px;letter-spacing:.05em}
+
+  .card{position:relative;margin:0 0 15px;padding:15px 16px;border-radius:14px;border:1px solid #131215;
+    background:linear-gradient(#4b4a51,#37363c 55%,#2b2a30);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.15),inset 0 -1px 0 rgba(0,0,0,.5),
+               inset 0 0 42px rgba(0,0,0,.28),0 8px 18px rgba(0,0,0,.5)}
+  .card::before{content:"";position:absolute;inset:6px;border:1px dashed rgba(233,222,180,.15);
+    border-radius:10px;pointer-events:none}
+  .card-title{font-family:Georgia,serif;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:#d9b36c;text-shadow:0 1px 0 rgba(0,0,0,.75);margin-bottom:11px}
+  .hint{font-size:12px;color:#a89f8a;margin:9px 2px 0;line-height:1.45;font-style:italic}
+
+  .row-between{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .chan{display:flex;align-items:center;justify-content:space-between;padding:9px 2px;
+    font-size:14.5px;font-weight:600;text-shadow:0 1px 0 rgba(0,0,0,.55)}
+  .chan+.chan{border-top:1px solid rgba(0,0,0,.4)}
+
+  .led{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px;vertical-align:middle}
+  .led.g{background:radial-gradient(circle at 34% 30%,#d6ffe6,var(--led-green) 45%,#0d5c2c);
+         box-shadow:0 0 9px rgba(82,232,143,.85),0 0 22px rgba(82,232,143,.4)}
+  .led.a{background:radial-gradient(circle at 34% 30%,#fff3cf,var(--led-amber) 45%,#7a520c);
+         box-shadow:0 0 9px rgba(255,201,94,.85),0 0 20px rgba(255,201,94,.35)}
+  .led.r{background:radial-gradient(circle at 34% 30%,#ffd6cd,var(--led-red) 45%,#6e1a0d);
+         box-shadow:0 0 9px rgba(255,107,87,.9),0 0 22px rgba(255,107,87,.45)}
+  .led.off{background:radial-gradient(circle at 36% 32%,#55535c,#2c2b31 60%,#19181d);
+           box-shadow:inset 0 1px 2px rgba(0,0,0,.7)}
+
+  .lcd{
+    background:
+      linear-gradient(rgba(255,255,255,.16),rgba(255,255,255,0) 34%),
+      repeating-linear-gradient(0deg,rgba(34,48,31,.07) 0 1px,transparent 1px 3px),
+      linear-gradient(#aebfa6,#96ab8f);
+    color:var(--lcd-ink);border-radius:9px;border:2px solid #14130f;
+    box-shadow:inset 0 3px 9px rgba(0,0,0,.55),inset 0 -1px 0 rgba(255,255,255,.35);
+    padding:10px 13px;font-family:"Courier New",monospace;font-weight:700;
+    text-shadow:0 1px 0 rgba(255,255,255,.25)}
+  .lcd .big{font-size:18px;letter-spacing:.03em}
+  .lcd .small{font-size:11px;letter-spacing:.07em;opacity:.85;display:block;margin-top:6px}
+  .status-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+  .status-grid .lbl{display:block;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:#4a5c44;margin-bottom:2px}
+  .status-grid b{font-size:13px}
+
+  .seg{display:flex;gap:5px;padding:5px;background:linear-gradient(#26252a,#1c1b20);
+    border:1px solid #111114;border-radius:12px;box-shadow:inset 0 2px 6px rgba(0,0,0,.72)}
+  .seg button{flex:1;border:none;cursor:pointer;font:inherit;font-size:13.5px;font-weight:700;
+    padding:10px 6px;border-radius:9px;background:transparent;color:#cfc6ae;opacity:.6;transition:.15s}
+  .seg button.on{color:#ffd97a;opacity:1;background:linear-gradient(#5a5860,#403e46);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 1px 3px rgba(0,0,0,.65);
+    text-shadow:0 0 9px rgba(255,205,100,.55)}
+
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:11px}
+  .chips button{border:none;cursor:pointer;font:inherit;font-size:12.5px;font-weight:700;
+    padding:8px 10px;border-radius:9px;background:linear-gradient(#4f4e56,#37363d);
+    border:1px solid #1d1c21;color:#d8cfb8;opacity:.66;
+    box-shadow:0 2px 4px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.13)}
+  .chips button.on{color:#ffd97a;opacity:1;background:linear-gradient(#3f3e45,#2c2b31);
+    box-shadow:inset 0 2px 6px rgba(0,0,0,.68);text-shadow:0 0 8px rgba(255,205,100,.5)}
+
+  .inline{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    font-size:14px;font-weight:600;margin-top:9px;text-shadow:0 1px 0 rgba(0,0,0,.5)}
+  input[type=time]{font-family:"Courier New",monospace;font-weight:700;font-size:15px;
+    border:1px solid #121215;background:linear-gradient(#26252a,#1d1c21);color:#ffd97a;
+    padding:7px 10px;border-radius:9px;box-shadow:inset 0 2px 5px rgba(0,0,0,.7)}
+  input[type=time]:focus{outline:2px solid rgba(255,217,122,.55);outline-offset:1px}
+
+  .stepper{display:inline-flex;align-items:center;gap:4px;margin-top:11px}
+  .stepper button{width:38px;height:38px;border:none;cursor:pointer;border-radius:11px;
+    background:repeating-linear-gradient(90deg,rgba(255,255,255,.09) 0 2px,transparent 2px 5px),
+               linear-gradient(#5a5860,#3a393f);
+    border:1px solid #1c1b20;color:#e9e2cf;font-size:19px;font-weight:800;
+    box-shadow:0 3px 0 #1a191e,inset 0 1px 0 rgba(255,255,255,.16)}
+  .stepper button:active{transform:translateY(2px);box-shadow:0 1px 0 #1a191e}
+  .stepper .val{min-width:104px;text-align:center;font-family:"Courier New",monospace;font-weight:700;
+    font-size:16px;padding:8px 6px;border-radius:9px;border:2px solid #14130f;
+    background:linear-gradient(#aebfa6,#96ab8f);color:var(--lcd-ink);
+    text-shadow:0 1px 0 rgba(255,255,255,.3);box-shadow:inset 0 3px 8px rgba(0,0,0,.5)}
+
+  .toggle-name{font-size:14.5px;font-weight:600;text-shadow:0 1px 0 rgba(0,0,0,.55)}
+  .rail-switch{position:relative;width:86px;height:38px;border:none;cursor:pointer;border-radius:19px;
+    background:linear-gradient(#26252a,#151418);border:1px solid #101013;
+    box-shadow:inset 0 2px 6px rgba(0,0,0,.78);transition:.25s;flex:0 0 auto}
+  .rail-switch .lever{position:absolute;top:4px;left:4px;width:44px;height:28px;border-radius:14px;
+    transition:left .22s cubic-bezier(.6,-0.28,.74,.05);
+    background:linear-gradient(145deg,#f5f2ea,#b9b4a6 58%,#8e897c);
+    box-shadow:0 2px 5px rgba(0,0,0,.6),inset 0 1px 0 #fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:9.5px;font-weight:800;letter-spacing:.1em;color:#5c5748}
+  .rail-switch.on{background:linear-gradient(#173423,#0e2116);
+    box-shadow:inset 0 2px 6px rgba(0,0,0,.78),0 0 12px rgba(60,220,120,.22)}
+  .rail-switch.on .lever{left:38px;color:#123c22}
+
+  .btn{display:block;width:100%;border:none;cursor:pointer;font:inherit;font-size:14.5px;
+    font-weight:700;padding:13px;border-radius:11px;margin-top:10px;
+    text-shadow:0 1px 0 rgba(255,255,255,.32);letter-spacing:.02em}
+  .btn:active{transform:translateY(3px)}
+  .btn.primary{background:linear-gradient(#f7dfa0,#d4ab4e 45%,#a97f22);color:#2c2107;
+    border:1px solid #7c5c14;box-shadow:0 4px 0 #6b4f10,0 9px 15px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.6)}
+  .btn.primary:active{box-shadow:0 1px 0 #6b4f10,0 4px 8px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.6)}
+  .btn:not(.primary){background:linear-gradient(#57565e,#3c3b42);color:#e9e2cf;border:1px solid #232228;
+    box-shadow:0 3px 0 #1a191e,inset 0 1px 0 rgba(255,255,255,.14);text-shadow:0 1px 0 rgba(0,0,0,.5)}
+  .btn:not(.primary):active{box-shadow:0 1px 0 #1a191e}
+  .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .actions .btn{margin-top:0}
+
+  .log{list-style:none;margin:0;padding:0;font-family:"Courier New",monospace;font-size:12.5px;font-weight:700}
+  .log li{display:flex;gap:9px;align-items:center;padding:7px 2px}
+  .log li+li{border-top:1px solid rgba(0,0,0,.38)}
+  .log time{color:#b7ae97;font-size:11px;min-width:92px}
+
+  .vac-box{margin-top:10px;padding:11px 12px;border-radius:10px;background:rgba(0,0,0,.22);
+    box-shadow:inset 0 2px 6px rgba(0,0,0,.45)}
+  .hidden{display:none!important}
+
+  /* латунная панель применения — закреплена снизу */
+  .apply-bar{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:12px 14px calc(14px + env(safe-area-inset-bottom));
+    background:linear-gradient(rgba(20,17,14,0),rgba(20,17,14,.94) 34%);
+  }
+  .apply-btn{
+    width:100%;border:none;cursor:pointer;font-family:Georgia,serif;font-size:15.5px;font-weight:800;
+    letter-spacing:.08em;padding:15px;border-radius:12px;color:#2c2107;
+    background:linear-gradient(#f7dfa0,#d4ab4e 45%,#a97f22);
+    border:1px solid #7c5c14;
+    box-shadow:0 4px 0 #6b4f10,0 10px 18px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.6);
+    text-shadow:0 1px 0 rgba(255,255,255,.4)}
+  .apply-btn:active{transform:translateY(3px);box-shadow:0 1px 0 #6b4f10,inset 0 1px 0 rgba(255,255,255,.6)}
+  .diff-note{max-height:0;overflow:hidden;transition:max-height .3s ease;font-size:12px;color:#cdbf9d;
+    text-align:center;margin-bottom:8px;line-height:1.5}
+  .diff-note.show{max-height:80px}
+
+  @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="app-head">
+    <div class="plate">
+      <div class="ttl">MP DIGEST</div>
+      <div class="sub">ПУЛЬТ ДИСПЕТЧЕРА</div>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="card-title">Статус станции</div>
+    <div class="lcd big" style="display:flex;justify-content:space-between;align-items:center">
+      <span id="st-last">ЗАГРУЗКА…</span><i class="led g" id="st-led" style="margin:0"></i>
+    </div>
+    <div style="height:9px"></div>
+    <div class="status-grid lcd small">
+      <div><span class="lbl">Последний сбор</span><b id="st-collect">—</b></div>
+      <div><span class="lbl">След. дайджест</span><b id="st-next">—</b></div>
+      <div><span class="lbl">Источники</span><b id="st-sources">—</b></div>
+      <div><span class="lbl">Опрос</span><b id="st-poll">—</b></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Регулярность опроса новостей</div>
+    <div class="seg" id="pollSeg">
+      <button type="button" data-v="1" class="on">Раз в день</button>
+      <button type="button" data-v="2">Дважды в день</button>
+    </div>
+    <label class="inline hidden" id="secondTimeRow">Второй обход <input type="time" id="secondTime" value="20:00"></label>
+    <p class="hint">Первый обход выполняется ежедневно в 08:00 по расписанию станции</p>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Дайджест · расписание отправки</div>
+    <div class="chips" id="dayChips">
+      <button type="button" data-d="0">пн</button><button type="button" data-d="1">вт</button>
+      <button type="button" data-d="2">ср</button><button type="button" data-d="3" class="on">чт</button>
+      <button type="button" data-d="4">пт</button><button type="button" data-d="5">сб</button>
+      <button type="button" data-d="6">вс</button>
+    </div>
+    <label class="inline">Время отправки <input type="time" id="digestTime" value="09:00"></label>
+    <div class="stepper">
+      <button type="button" id="perMinus">−</button>
+      <span class="val" id="periodVal">7 ДНЕЙ</span>
+      <button type="button" id="perPlus">+</button>
+    </div>
+    <p class="hint">Период: глубина новостей, попадающих в дайджест (1–14 дней)</p>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Каналы-источники</div>
+    <div id="channelList"></div>
+    <p class="hint">Выключенный канал пропускается при сборе, но остаётся в конфигурации</p>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Отпускной режим</div>
+    <div class="row-between">
+      <span class="toggle-name">Пауза бота</span>
+      <button class="rail-switch" type="button" id="vacSwitch"><span class="lever">I·II</span></button>
+    </div>
+    <div class="vac-box hidden" id="vacBox">
+      <div class="stepper">
+        <button type="button" id="vacMinus">−</button>
+        <span class="val" id="vacVal">7 ДНЕЙ</span>
+        <button type="button" id="vacPlus">+</button>
+      </div>
+      <p class="hint" id="vacUntil">Бот замолкает и сам возобновит работу</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Ручное управление</div>
+    <div class="actions">
+      <button class="btn primary" type="button" id="btnCollect">Собрать сейчас</button>
+      <button class="btn" type="button" id="btnDigest">Дайджест сейчас</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Журнал станции</div>
+    <ul class="log" id="logList"><li><i class="led off"></i><time>—</time><span>журнал подгрузится из чата с ботом</span></li></ul>
+  </section>
+
+</div>
+
+<div class="apply-bar">
+  <div class="diff-note" id="diffNote"></div>
+  <button class="apply-btn" type="button" id="btnApply">⚙ ПРИМЕНИТЬ НА СТАНЦИИ</button>
+</div>
+
+<script>
+"use strict";
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+if (tg) { tg.ready(); try { tg.expand(); } catch(e){} }
+
+// ── состояние пульта ─────────────────────────────────────────────
+const state = {
+  pollPerDay: 1,
+  secondHm: "20:00",
+  day: 3,
+  digestTime: "09:00",
+  periodDays: 7,
+  channels: [],          // [{name, on}]
+  vacationOn: false,
+  vacationDays: 7,
+};
+
+const DAYS = ["пн","вт","ср","чт","пт","сб","вс"];
+
+function el(id){ return document.getElementById(id); }
+
+// ── рендер каналов ───────────────────────────────────────────────
+function renderChannels(){
+  const box = el("channelList");
+  box.innerHTML = "";
+  state.channels.forEach((ch, i) => {
+    const row = document.createElement("div");
+    row.className = "chan";
+    const name = document.createElement("span");
+    name.className = "toggle-name";
+    name.textContent = ch.name;
+    const sw = document.createElement("button");
+    sw.type = "button";
+    sw.className = "rail-switch" + (ch.on ? " on" : "");
+    sw.innerHTML = '<span class="lever">I·II</span>';
+    sw.addEventListener("click", () => {
+      ch.on = !ch.on;
+      sw.classList.toggle("on", ch.on);
+      buzz();
+    });
+    row.appendChild(name); row.appendChild(sw);
+    box.appendChild(row);
+  });
+  if (!state.channels.length) {
+    box.innerHTML = '<p class="hint">Каналы загружаются из конфигурации…</p>';
+  }
+}
+
+// ── вычисление diff и payload ────────────────────────────────────
+function buildPayload(){
+  const tokens = [];
+  if (state.pollPerDay === 2) {
+    tokens.push("poll2");
+    tokens.push("sec" + state.secondHm.replace(":", ""));
+  }
+  if (state.day !== 3) tokens.push("day" + state.day);
+  if (state.digestTime !== "09:00") {
+    tokens.push("at" + state.digestTime.replace(":", ""));
+  }
+  if (state.periodDays !== 7) tokens.push("per" + state.periodDays);
+  state.channels.forEach(ch => {
+    // шлём только изменения против «включён по умолчанию»
+    if (!ch.on) tokens.push("choff_" + ch.name.replace(/[^a-z0-9_]/gi, "").toLowerCase());
+  });
+  if (state.vacationOn) tokens.push("vac" + state.vacationDays);
+  return tokens.join("-");
+}
+
+function describeDiff(){
+  const parts = [];
+  parts.push(state.pollPerDay === 2
+    ? `опрос дважды в день (второй в ${state.secondHm})`
+    : "опрос раз в день");
+  parts.push(`дайджест: ${DAYS[state.day]} ${state.digestTime}`);
+  parts.push(`период ${state.periodDays} дн.`);
+  const off = state.channels.filter(c => !c.on).map(c => "@" + c.name);
+  if (off.length) parts.push("выключены: " + off.join(", "));
+  if (state.vacationOn) parts.push(`пауза ${state.vacationDays} дн.`);
+  return parts.join(" · ");
+}
+
+function refreshApplyBar(){
+  const payload = buildPayload();
+  el("diffNote").textContent = describeDiff();
+  el("btnApply").textContent = payload
+    ? "⚙ ПРИМЕНИТЬ НА СТАНЦИИ"
+    : "✓ БЕЗ ИЗМЕНЕНИЙ — ОТКРЫТЬ БОТА";
+}
+
+// ── переход в бота (вариант А: deep-link) ────────────────────────
+function applyToStation(){
+  const payload = buildPayload();
+  const base = window.MP_BOT_USERNAME || "mp_digest_kd_bot";
+  const url = payload
+    ? `https://t.me/${base}?start=app_${payload}`
+    : `https://t.me/${base}`;
+  buzz();
+  if (tg && tg.openTelegramLink) {
+    tg.openTelegramLink(url);
+  } else {
+    location.href = url;
+  }
+}
+
+// ── ручные запуски тоже через чат ───────────────────────────────
+function openBotCommand(cmd){
+  const base = window.MP_BOT_USERNAME || "mp_digest_kd_bot";
+  const url = `https://t.me/${base}`;
+  buzz();
+  if (tg && tg.openTelegramLink) tg.openTelegramLink(url);
+  else location.href = url;
+}
+
+// ── вибро ────────────────────────────────────────────────────────
+function buzz(){ if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged(); }
+
+// ── инициализация состояния из конфига (если открыто как WebApp) ─
+function hydrateFromTelegram(){
+  // Данные о текущих настройках приходят через initDataUnsafe только если бот
+  // передал их при открытии; для v1 читаем дефолты, а факт-состояние бот
+  // подтверждает ответом на /start app_…
+  if (!(tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param)) return;
+  // start_param может нести текущие настройки для отображения
+  try {
+    const sp = tg.initDataUnsafe.start_param;
+    const poll2 = /poll2/.test(sp);
+    const sec = sp.match(/sec(\d{4})/);
+    const day = sp.match(/day([0-6])/);
+    const at = sp.match(/at(\d{4})/);
+    const per = sp.match(/per(\d{1,2})/);
+    if (poll2) setPoll(2);
+    if (sec) state.secondHm = sec[1].slice(0,2)+":"+sec[1].slice(2);
+    if (day) setDay(parseInt(day[1]));
+    if (at) state.digestTime = at[1].slice(0,2)+":"+at[1].slice(2);
+    if (per) setPeriod(parseInt(per[1]));
+    renderState();
+  } catch(e) {}
+}
+
+// ── привязка контролов ───────────────────────────────────────────
+function setPoll(n){
+  state.pollPerDay = n;
+  el("pollSeg").querySelectorAll("button").forEach(b =>
+    b.classList.toggle("on", +b.dataset.v === n));
+  el("secondTimeRow").classList.toggle("hidden", n !== 2);
+}
+el("pollSeg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  setPoll(+b.dataset.v); buzz();
+});
+el("secondTime").addEventListener("change", e => state.secondHm = e.target.value);
+
+function setDay(d){
+  state.day = d;
+  el("dayChips").querySelectorAll("button").forEach(b =>
+    b.classList.toggle("on", +b.dataset.d === d));
+}
+el("dayChips").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  setDay(+b.dataset.d); buzz();
+});
+el("digestTime").addEventListener("change", e => state.digestTime = e.target.value);
+
+function setPeriod(n){
+  state.periodDays = Math.max(1, Math.min(14, n));
+  el("periodVal").textContent = state.periodDays + " ДНЕЙ";
+}
+el("perMinus").addEventListener("click", () => { setPeriod(state.periodDays - 1); buzz(); });
+el("perPlus").addEventListener("click", () => { setPeriod(state.periodDays + 1); buzz(); });
+
+el("vacSwitch").addEventListener("click", () => {
+  state.vacationOn = !state.vacationOn;
+  el("vacSwitch").classList.toggle("on", state.vacationOn);
+  el("vacBox").classList.toggle("hidden", !state.vacationOn);
+  updateVacText(); buzz();
+});
+function setVacDays(n){
+  state.vacationDays = Math.max(3, Math.min(28, n));
+  el("vacVal").textContent = state.vacationDays + " ДНЕЙ";
+  updateVacText();
+}
+function updateVacText(){
+  const until = new Date(Date.now() + state.vacationDays * 86400000);
+  el("vacUntil").textContent = state.vacationOn
+    ? "Бот замолкает и сам возобновится " + until.toLocaleDateString("ru-RU")
+    : "Бот замолкает и сам возобновит работу";
+}
+el("vacMinus").addEventListener("click", () => { setVacDays(state.vacationDays - 7); buzz(); });
+el("vacPlus").addEventListener("click", () => { setVacDays(state.vacationDays + 7); buzz(); });
+
+el("btnCollect").addEventListener("click", () => openBotCommand("/collect"));
+el("btnDigest").addEventListener("click", () => openBotCommand("/digest"));
+el("btnApply").addEventListener("click", applyToStation);
+
+["pollSeg","dayChips","digestTime","secondTime"].forEach(id =>
+  el(id).addEventListener("change", refreshApplyBar));
+
+function renderState(){
+  setPoll(state.pollPerDay); setDay(state.day); setPeriod(state.periodDays);
+  el("secondTime").value = state.secondHm; el("digestTime").value = state.digestTime;
+  renderChannels(); refreshApplyBar();
+}
+
+// стартовые значения по умолчанию; hydrateFromTelegram может уточнить
+renderState();
+updateVacText();
+hydrateFromTelegram();
+
+// статусная строка: без бэкенда показываем нейтральное состояние
+el("st-last").textContent = "ГОТОВ К РАБОТЕ";
+el("st-collect").textContent = "см. /weekly в чате";
+el("st-next").textContent = DAYS[state.day] + " " + state.digestTime;
+el("st-sources").innerHTML = '<i class="led g"></i>каналы: ' + (state.channels.length || "—");
+el("st-poll").textContent = state.pollPerDay + "×ДЕНЬ";
+</script>
+</body>
+</html>
