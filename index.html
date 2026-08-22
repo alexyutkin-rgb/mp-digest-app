@@ -504,6 +504,28 @@ el("st-collect").textContent = "см. /weekly в чате";
 el("st-next").textContent = DAYS[state.day] + " " + state.digestTime;
 el("st-sources").innerHTML = '<i class="led g"></i>каналы: ' + (state.channels.length || "—");
 el("st-poll").textContent = state.pollPerDay + "×ДЕНЬ";
+
+// Самопроверка (?selftest=1): программно прожимает органы и пишет итог в title.
+if (location.search.includes("selftest")) {
+  setTimeout(() => {
+    try {
+      const out = [];
+      el("pollSeg").querySelectorAll("button")[1].click();
+      out.push("poll=" + state.pollPerDay);
+      el("perPlus").click();
+      out.push("period=" + state.periodDays);
+      document.querySelector("#channelList .rail-switch").click();
+      out.push("ch0=" + state.channels[0].on);
+      el("vacSwitch").click();
+      out.push("vac=" + state.vacationOn);
+      out.push("payload=" + buildPayload());
+      out.push("btn=" + el("btnApply").textContent.trim().slice(0, 10));
+      document.title = "SELFTEST " + out.join(" | ");
+    } catch (err) {
+      document.title = "SELFTEST FAIL: " + err.message;
+    }
+  }, 400);
+}
 </script>
 </body>
 </html>
