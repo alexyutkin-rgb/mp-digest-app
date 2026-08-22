@@ -268,6 +268,11 @@
 
 <script>
 "use strict";
+// Ловец ошибок: вне Telegram некуда писать консоль — выводим в статус-строку.
+window.addEventListener("error", e => {
+  const s = document.getElementById("st-last");
+  if (s) s.textContent = "ОШИБКА: " + (e.message || "unknown").slice(0, 40);
+});
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 if (tg) { tg.ready(); try { tg.expand(); } catch(e){} }
 
