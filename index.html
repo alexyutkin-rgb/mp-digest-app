@@ -507,13 +507,6 @@ el("st-poll").textContent = state.pollPerDay + "×ДЕНЬ";
 
 // Самопроверка (?selftest=1): программно прожимает органы и пишет итог в title.
 if (location.search.includes("selftest")) {
-  // Диагностика реальных кликов: куда они приходят и доходят ли до обработчиков.
-  document.addEventListener("click", e => {
-    const t = e.target.closest("button");
-    document.title = "CLICK→" + (t ? (t.textContent.trim().slice(0, 12)
-      || t.className.slice(0, 16)) : e.target.tagName)
-      + " | day=" + state.day;
-  }, false);
   setTimeout(() => {
     try {
       const out = [];
