@@ -417,9 +417,10 @@ function setPoll(n){
 }
 el("pollSeg").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
-  setPoll(+b.dataset.v); buzz();
+  setPoll(+b.dataset.v); buzz(); refreshApplyBar(); syncStatus();
 });
 el("secondTime").addEventListener("change", e => state.secondHm = e.target.value);
+el("secondTime").addEventListener("input", e => state.secondHm = e.target.value);
 
 function setDay(d){
   state.day = d;
@@ -428,22 +429,24 @@ function setDay(d){
 }
 el("dayChips").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
-  setDay(+b.dataset.d); buzz();
+  setDay(+b.dataset.d); buzz(); refreshApplyBar(); syncStatus();
 });
-el("digestTime").addEventListener("change", e => state.digestTime = e.target.value);
+function onDigestTime(e){ state.digestTime = e.target.value; refreshApplyBar(); syncStatus(); }
+el("digestTime").addEventListener("change", onDigestTime);
+el("digestTime").addEventListener("input", onDigestTime);
 
 function setPeriod(n){
   state.periodDays = Math.max(1, Math.min(14, n));
   el("periodVal").textContent = state.periodDays + " ДНЕЙ";
 }
-el("perMinus").addEventListener("click", () => { setPeriod(state.periodDays - 1); buzz(); });
-el("perPlus").addEventListener("click", () => { setPeriod(state.periodDays + 1); buzz(); });
+el("perMinus").addEventListener("click", () => { setPeriod(state.periodDays - 1); buzz(); refreshApplyBar(); });
+el("perPlus").addEventListener("click", () => { setPeriod(state.periodDays + 1); buzz(); refreshApplyBar(); });
 
 el("vacSwitch").addEventListener("click", () => {
   state.vacationOn = !state.vacationOn;
   el("vacSwitch").classList.toggle("on", state.vacationOn);
   el("vacBox").classList.toggle("hidden", !state.vacationOn);
-  updateVacText(); buzz();
+  updateVacText(); buzz(); refreshApplyBar();
 });
 function setVacDays(n){
   state.vacationDays = Math.max(3, Math.min(28, n));
@@ -463,8 +466,21 @@ el("btnCollect").addEventListener("click", () => openBotCommand("/collect"));
 el("btnDigest").addEventListener("click", () => openBotCommand("/digest"));
 el("btnApply").addEventListener("click", applyToStation);
 
-["pollSeg","dayChips","digestTime","secondTime"].forEach(id =>
-  el(id).addEventListener("change", refreshApplyBar));
+// Статусная плитка «ОПРОС» и «СЛЕД. ДАЙДЖЕСТ» следит за состоянием пульта.
+function syncStatus(){
+  el("st-poll").textContent = state.pollPerDay + "×ДЕНЬ";
+  el("st-next").textContent = DAYS[state.day] + " " + state.digestTime;
+}
+
+// Канальный рубильник тоже обновляет панель применения.
+const _renderChannels = renderChannels;
+renderChannels = function(){
+  _renderChannels();
+  const box = el("channelList");
+  box.querySelectorAll(".rail-switch").forEach((sw, i) => {
+    sw.addEventListener("click", () => refreshApplyBar());
+  });
+};
 
 function renderState(){
   setPoll(state.pollPerDay); setDay(state.day); setPeriod(state.periodDays);
