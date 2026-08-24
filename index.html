@@ -179,7 +179,7 @@
   <header class="app-head">
     <div class="plate">
       <div class="ttl">MP DIGEST</div>
-      <div class="sub">ПУЛЬТ ДИСПЕТЧЕРА · REV&nbsp;4</div>
+      <div class="sub">ПУЛЬТ ДИСПЕТЧЕРА · REV&nbsp;5</div>
     </div>
   </header>
 
@@ -195,6 +195,7 @@
       <div><span class="lbl">Источники</span><b id="st-sources">—</b></div>
       <div><span class="lbl">Опрос</span><b id="st-poll">—</b></div>
     </div>
+    <p class="hint">Пульс станции: зелёный — свежая отметка от бота или ночного сбора. Обновляется раз в минуту.</p>
   </section>
 
   <section class="card">
@@ -291,6 +292,10 @@ window.addEventListener("error", e => {
 });
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 if (tg) { tg.ready(); try { tg.expand(); } catch(e){} }
+// Секретный gist с пульсом станции (см. src/teledigest/heartbeat.py).
+// Внутри только безликая отметка времени — секретов нет.
+window.MP_HEARTBEAT_URL =
+  "https://gist.githubusercontent.com/alexyutkin-rgb/f191c3b968848327202ba80e7a05e8a8/raw";
 
 // ── состояние пульта ─────────────────────────────────────────────
 const state = {
@@ -577,6 +582,50 @@ el("st-collect").textContent = "см. /weekly в чате";
 el("st-next").textContent = DAYS[state.day] + " " + state.digestTime;
 el("st-sources").innerHTML = '<i class="led g"></i>каналы: ' + (state.channels.length || "—");
 el("st-poll").textContent = state.pollPerDay + "×ДЕНЬ";
+
+// ── живой статус: пульс станции ──────────────────────────────────
+// Процесс бота и облачный сбор пишут отметку времени в секретный gist
+// (src/teledigest/heartbeat.py). Пульт читает её по сырой ссылке и судит
+// о свежести. Пока ссылка не вставлена в MP_HEARTBEAT_URL — запасной
+// режим: просто проверяем доступность api.telegram.org.
+const HB_URL = window.MP_HEARTBEAT_URL || "";
+function setLed(cls, text){
+  el("st-led").className = "led " + cls;
+  el("st-last").textContent = text;
+}
+function pingBot(){
+  const slow = setTimeout(() => setLed("a", "ПРОВЕРКА СВЯЗИ…"), 1500);
+  const done = () => clearTimeout(slow);
+  if (HB_URL) {
+    fetch(HB_URL + "?t=" + Date.now(), { cache: "no-store" })
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(t => {
+        done();
+        const stamp = parseInt((t || "").trim(), 10);
+        if (!stamp) throw new Error("bad pulse");
+        const ageMin = Math.round((Date.now() / 1000 - stamp) / 60);
+        if (ageMin <= 3)        setLed("g", "БОТ НА СВЯЗИ");
+        else if (ageMin <= 26 * 60) setLed("g", "СТАНЦИЯ ЖИВА, БОТ СПИТ");
+        else if (ageMin <= 48 * 60) setLed("r", "МОЛЧИТ " +
+          Math.round(ageMin / 60) + " Ч");
+        else                    setLed("r", "МОЛЧИТ " +
+          Math.round(ageMin / 1440) + " ДН");
+      })
+      .catch(() => { done(); setLed("r", "НЕТ СВЯЗИ"); });
+  } else {
+    // запасной режим до настройки пульса: только доступность Telegram API
+    fetch("https://api.telegram.org/bot1/getMe", { cache: "no-store" })
+      .then(r => r.json())
+      .then(j => {
+        done();
+        if (!j || !j.ok) throw new Error("bad api answer");
+        setLed("g", "ГОТОВ К РАБОТЕ");
+      })
+      .catch(() => { done(); setLed("r", "НЕТ СВЯЗИ"); });
+  }
+}
+pingBot();
+setInterval(pingBot, 60000);
 
 // Самопроверка (?selftest=1): программно прожимает органы и пишет итог в title.
 if (location.search.includes("selftest")) {
