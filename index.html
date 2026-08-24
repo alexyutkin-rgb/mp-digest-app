@@ -231,6 +231,22 @@
   </section>
 
   <section class="card">
+    <div class="card-title">Новый источник</div>
+    <div class="actions">
+      <button class="btn primary" type="button" id="btnAddChannel">＋ Канал</button>
+      <button class="btn" type="button" id="btnAddSite">🌐 Сайт</button>
+    </div>
+    <input type="text" id="chName" class="hidden" autocomplete="off" spellcheck="false"
+           placeholder="@username канала или t.me/ссылка"
+           style="width:100%;margin-top:9px;background:#14100b;border:1px solid #6b5a33;
+                  border-radius:8px;color:#e9deb4;padding:10px 12px;font:inherit">
+    <div class="actions hidden" id="chActions" style="margin-top:9px">
+      <button class="btn primary" type="button" id="chGo">Проверить и добавить</button>
+    </div>
+    <p class="hint">Канал появится в списке выше и уйдёт боту на проверку кнопкой «Применить»</p>
+  </section>
+
+  <section class="card">
     <div class="card-title">Отпускной режим</div>
     <div class="row-between">
       <span class="toggle-name">Пауза бота</span>
