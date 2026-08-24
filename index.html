@@ -591,6 +591,12 @@ if (location.search.includes("selftest")) {
       out.push("ch0=" + state.channels[0].on);
       el("vacSwitch").click();
       out.push("vac=" + state.vacationOn);
+      // блок «Новый источник»: программное добавление канала
+      el("btnAddChannel").click();
+      el("chName").value = "@rbc_news";
+      el("chGo").click();
+      out.push("chCount=" + state.channels.length);
+      out.push("newChInPayload=" + (buildPayload().includes("chon_rbc_news")));
       out.push("payload=" + buildPayload());
       out.push("btn=" + el("btnApply").textContent.trim().slice(0, 10));
       document.title = "SELFTEST " + out.join(" | ");
