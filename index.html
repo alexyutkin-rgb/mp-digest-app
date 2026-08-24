@@ -179,7 +179,7 @@
   <header class="app-head">
     <div class="plate">
       <div class="ttl">MP DIGEST</div>
-      <div class="sub">ПУЛЬТ ДИСПЕТЧЕРА · REV&nbsp;3</div>
+      <div class="sub">ПУЛЬТ ДИСПЕТЧЕРА · REV&nbsp;4</div>
     </div>
   </header>
 
@@ -323,6 +323,13 @@ function renderChannels(){
 }
 
 // ── вычисление diff и payload ────────────────────────────────────
+// Каналы из базового конфига: всё сверх них считается «новым» и уходит
+// боту токеном chon_, выключенные — choff_.
+const DEFAULT_CHANNELS = ["wbsellerofficial", "media_rwb"];
+function chKey(name){
+  return name.replace(/[^a-z0-9_]/gi, "").toLowerCase();
+}
+
 function buildPayload(){
   const tokens = [];
   if (state.pollPerDay === 2) {
@@ -335,8 +342,9 @@ function buildPayload(){
   }
   if (state.periodDays !== 7) tokens.push("per" + state.periodDays);
   state.channels.forEach(ch => {
-    // шлём только изменения против «включён по умолчанию»
-    if (!ch.on) tokens.push("choff_" + ch.name.replace(/[^a-z0-9_]/gi, "").toLowerCase());
+    const key = chKey(ch.name);
+    if (!ch.on) tokens.push("choff_" + key);          // шлём только изменения
+    else if (!DEFAULT_CHANNELS.includes(key)) tokens.push("chon_" + key);
   });
   if (state.vacationOn) tokens.push("vac" + state.vacationDays);
   return tokens.join("-");
@@ -351,6 +359,9 @@ function describeDiff(){
   parts.push(`период ${state.periodDays} дн.`);
   const off = state.channels.filter(c => !c.on).map(c => "@" + c.name);
   if (off.length) parts.push("выключены: " + off.join(", "));
+  const added = state.channels.filter(c =>
+    c.on && !DEFAULT_CHANNELS.includes(chKey(c.name))).map(c => "@" + c.name);
+  if (added.length) parts.push("новые каналы: " + added.join(", "));
   if (state.vacationOn) parts.push(`пауза ${state.vacationDays} дн.`);
   return parts.join(" · ");
 }
@@ -378,10 +389,12 @@ function applyToStation(){
   }
 }
 
-// ── ручные запуски тоже через чат ───────────────────────────────
+// ── ручные запуски тоже через чат (deep-link app_runcollect/app_rundigest) ──
 function openBotCommand(cmd){
   const base = window.MP_BOT_USERNAME || "mp_digest_kd_bot";
-  const url = `https://t.me/${base}`;
+  const url = cmd
+    ? `https://t.me/${base}?start=app_${cmd}`
+    : `https://t.me/${base}`;
   buzz();
   if (tg && tg.openTelegramLink) tg.openTelegramLink(url);
   else location.href = url;
@@ -467,14 +480,58 @@ function updateVacText(){
 el("vacMinus").addEventListener("click", () => { setVacDays(state.vacationDays - 7); buzz(); });
 el("vacPlus").addEventListener("click", () => { setVacDays(state.vacationDays + 7); buzz(); });
 
-el("btnCollect").addEventListener("click", () => openBotCommand("/collect"));
-el("btnDigest").addEventListener("click", () => openBotCommand("/digest"));
+el("btnCollect").addEventListener("click", () => openBotCommand("runcollect"));
+el("btnDigest").addEventListener("click", () => openBotCommand("rundigest"));
 el("btnApply").addEventListener("click", applyToStation);
+
+// ── новый источник ───────────────────────────────────────────────
+// Telegram-канал добавляется прямо на пульте и уезжает боту токеном
+// chon_ при нажатии «ПРИМЕНИТЬ». Сайты принимают только в чате — там
+// бот умеет сам находить RSS/селектор (кнопка открывает меню бота).
+function normalizeChannel(raw){
+  let n = raw.trim().replace(/^https?:\/\/t\.me\//i, "")
+              .split("/")[0].replace(/^@/, "").trim();
+  return /^[A-Za-z][A-Za-z0-9_]{2,63}$/.test(n) ? n : null;
+}
+
+el("btnAddChannel").addEventListener("click", () => {
+  el("chName").classList.remove("hidden");
+  el("chActions").classList.remove("hidden");
+  el("btnAddChannel").classList.add("hidden");
+  try { el("chName").focus(); } catch(e){}
+  buzz();
+});
+
+el("chGo").addEventListener("click", () => {
+  const name = normalizeChannel(el("chName").value || "");
+  if (!name) {
+    el("st-last").textContent = "ОШИБКА: имя канала?";
+    return;
+  }
+  if (state.channels.some(c => chKey(c.name) === name.toLowerCase())) {
+    el("st-last").textContent = "ОШИБКА: канал уже в списке";
+    return;
+  }
+  state.channels.push({ name, on: true });
+  renderChannels();
+  syncStatus();
+  refreshApplyBar();
+  el("chName").value = "";
+  el("chName").classList.add("hidden");
+  el("chActions").classList.add("hidden");
+  el("btnAddChannel").classList.remove("hidden");
+  el("st-last").textContent = "ГОТОВ К РАБОТЕ";
+  buzz();
+});
+
+el("btnAddSite").addEventListener("click", () => openBotCommand(""));
 
 // Статусная плитка «ОПРОС» и «СЛЕД. ДАЙДЖЕСТ» следит за состоянием пульта.
 function syncStatus(){
   el("st-poll").textContent = state.pollPerDay + "×ДЕНЬ";
   el("st-next").textContent = DAYS[state.day] + " " + state.digestTime;
+  el("st-sources").innerHTML =
+    '<i class="led g"></i>каналы: ' + (state.channels.length || "—");
 }
 
 // Канальный рубильник тоже обновляет панель применения.
