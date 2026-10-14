@@ -307,6 +307,7 @@ const state = {
   channels: [
     { name: "wbsellerofficial", on: true },
     { name: "Media_RWB", on: true },
+    { name: "ozonmarketplace", on: true },
   ],
   vacationOn: false,
   vacationDays: 7,
@@ -344,30 +345,49 @@ function renderChannels(){
 }
 
 // ── вычисление diff и payload ────────────────────────────────────
-// Каналы из базового конфига: всё сверх них считается «новым» и уходит
-// боту токеном chon_, выключенные — choff_.
-const DEFAULT_CHANNELS = ["wbsellerofficial", "media_rwb"];
+// «Эталон» — то, что сейчас сохранено на станции. Пульт читает его из
+// settings.json в gist (см. src/teledigest/pult_state.py); если прочитать
+// не удалось — эталоном служат значения по умолчанию. ПРИМЕНИТЬ шлёт
+// только отличия от эталона, поэтому любое значение (в т.ч. «7 дней»
+// после «6») можно вернуть.
 function chKey(name){
   return name.replace(/[^a-z0-9_]/gi, "").toLowerCase();
 }
+function snapState(){
+  return JSON.parse(JSON.stringify(state));
+}
+let baseline = snapState();
 
 function buildPayload(){
+  const b = baseline;
   const tokens = [];
-  if (state.pollPerDay === 2) {
-    tokens.push("poll2");
-    tokens.push("sec" + state.secondHm.replace(":", ""));
+  if (state.pollPerDay !== b.pollPerDay ||
+      (state.pollPerDay === 2 && state.secondHm !== b.secondHm)) {
+    if (state.pollPerDay === 2) {
+      tokens.push("poll2");
+      tokens.push("sec" + state.secondHm.replace(":", ""));
+    } else {
+      tokens.push("poll1");
+    }
   }
-  if (state.day !== 3) tokens.push("day" + state.day);
-  if (state.digestTime !== "09:00") {
+  if (state.day !== b.day) tokens.push("day" + state.day);
+  if (state.digestTime !== b.digestTime) {
     tokens.push("at" + state.digestTime.replace(":", ""));
   }
-  if (state.periodDays !== 7) tokens.push("per" + state.periodDays);
+  if (state.periodDays !== b.periodDays) tokens.push("per" + state.periodDays);
+  const was = {};
+  b.channels.forEach(ch => { was[chKey(ch.name)] = ch.on; });
   state.channels.forEach(ch => {
     const key = chKey(ch.name);
-    if (!ch.on) tokens.push("choff_" + key);          // шлём только изменения
-    else if (!DEFAULT_CHANNELS.includes(key)) tokens.push("chon_" + key);
+    if (!(key in was)) { if (ch.on) tokens.push("chon_" + key); }  // новый канал
+    else if (ch.on !== was[key]) tokens.push((ch.on ? "chon_" : "choff_") + key);
   });
-  if (state.vacationOn) tokens.push("vac" + state.vacationDays);
+  if (state.vacationOn &&
+      (!b.vacationOn || state.vacationDays !== b.vacationDays)) {
+    tokens.push("vac" + state.vacationDays);
+  } else if (!state.vacationOn && b.vacationOn) {
+    tokens.push("vacoff");
+  }
   return tokens.join("-");
 }
 
@@ -380,8 +400,9 @@ function describeDiff(){
   parts.push(`период ${state.periodDays} дн.`);
   const off = state.channels.filter(c => !c.on).map(c => "@" + c.name);
   if (off.length) parts.push("выключены: " + off.join(", "));
+  const known = new Set(baseline.channels.map(c => chKey(c.name)));
   const added = state.channels.filter(c =>
-    c.on && !DEFAULT_CHANNELS.includes(chKey(c.name))).map(c => "@" + c.name);
+    c.on && !known.has(chKey(c.name))).map(c => "@" + c.name);
   if (added.length) parts.push("новые каналы: " + added.join(", "));
   if (state.vacationOn) parts.push(`пауза ${state.vacationDays} дн.`);
   return parts.join(" · ");
@@ -424,27 +445,55 @@ function openBotCommand(cmd){
 // ── вибро ────────────────────────────────────────────────────────
 function buzz(){ if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged(); }
 
-// ── инициализация состояния из конфига (если открыто как WebApp) ─
-function hydrateFromTelegram(){
-  // Данные о текущих настройках приходят через initDataUnsafe только если бот
-  // передал их при открытии; для v1 читаем дефолты, а факт-состояние бот
-  // подтверждает ответом на /start app_…
-  if (!(tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param)) return;
-  // start_param может нести текущие настройки для отображения
-  try {
-    const sp = tg.initDataUnsafe.start_param;
-    const poll2 = /poll2/.test(sp);
-    const sec = sp.match(/sec(\d{4})/);
-    const day = sp.match(/day([0-6])/);
-    const at = sp.match(/at(\d{4})/);
-    const per = sp.match(/per(\d{1,2})/);
-    if (poll2) setPoll(2);
-    if (sec) state.secondHm = sec[1].slice(0,2)+":"+sec[1].slice(2);
-    if (day) setDay(parseInt(day[1]));
-    if (at) state.digestTime = at[1].slice(0,2)+":"+at[1].slice(2);
-    if (per) setPeriod(parseInt(per[1]));
-    renderState();
-  } catch(e) {}
+// ── инициализация: реальные настройки станции из gist ────────────
+// Станция публикует settings.json рядом с пульсом. Пока он грузится (или
+// если не загрузился) — на экране значения по умолчанию.
+const HB_BASE = (window.MP_HEARTBEAT_URL || "").replace(/\/+$/, "");
+const SETTINGS_URL = HB_BASE ? HB_BASE + "/settings.json" : "";
+
+function applySettings(s){
+  if (!s || typeof s !== "object") return false;
+  if (s.poll_per_day === 1 || s.poll_per_day === 2) state.pollPerDay = s.poll_per_day;
+  if (/^\d{2}:\d{2}$/.test(s.poll_second_hm || "")) state.secondHm = s.poll_second_hm;
+  if (Number.isInteger(s.summary_weekday) && s.summary_weekday >= 0 &&
+      s.summary_weekday <= 6) state.day = s.summary_weekday;
+  if (/^\d{2}:\d{2}$/.test(s.summary_time || "")) state.digestTime = s.summary_time;
+  if (Number.isInteger(s.digest_period_days)) {
+    state.periodDays = Math.max(1, Math.min(14, s.digest_period_days));
+  }
+  if (Array.isArray(s.channels) && s.channels.length) {
+    state.channels = s.channels
+      .filter(c => c && typeof c.name === "string")
+      .map(c => ({ name: c.name, on: c.on !== false }));
+  }
+  state.vacationOn = false;
+  if (s.vacation_until) {
+    const until = new Date(s.vacation_until + "T23:59:59");
+    const days = Math.ceil((until - Date.now()) / 86400000);
+    if (days > 0) {
+      state.vacationOn = true;
+      state.vacationDays = Math.max(1, Math.min(28, days));
+    }
+  }
+  return true;
+}
+
+function hydrateFromStation(){
+  if (!SETTINGS_URL) return;
+  fetch(SETTINGS_URL + "?t=" + Date.now(), { cache: "no-store" })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(s => {
+      if (!applySettings(s)) return;
+      renderState();
+      el("vacSwitch").classList.toggle("on", state.vacationOn);
+      el("vacBox").classList.toggle("hidden", !state.vacationOn);
+      el("vacVal").textContent = state.vacationDays + " ДНЕЙ";
+      updateVacText();
+      syncStatus();
+      baseline = snapState();
+      refreshApplyBar();
+    })
+    .catch(() => { /* остаёмся на значениях по умолчанию */ });
 }
 
 // ── привязка контролов ───────────────────────────────────────────
@@ -571,10 +620,11 @@ function renderState(){
   renderChannels(); refreshApplyBar();
 }
 
-// стартовые значения по умолчанию; hydrateFromTelegram может уточнить
+// стартовые значения по умолчанию; hydrateFromStation подтянет реальные
 renderState();
 updateVacText();
-hydrateFromTelegram();
+baseline = snapState();
+hydrateFromStation();
 
 // статусная строка: без бэкенда показываем нейтральное состояние
 el("st-last").textContent = "ГОТОВ К РАБОТЕ";
@@ -588,7 +638,8 @@ el("st-poll").textContent = state.pollPerDay + "×ДЕНЬ";
 // (src/teledigest/heartbeat.py). Пульт читает её по сырой ссылке и судит
 // о свежести. Пока ссылка не вставлена в MP_HEARTBEAT_URL — запасной
 // режим: просто проверяем доступность api.telegram.org.
-const HB_URL = window.MP_HEARTBEAT_URL || "";
+// Файл пульса явно по имени: в гисте лежат и другие файлы (settings.json).
+const HB_URL = HB_BASE ? HB_BASE + "/heartbeat" : "";
 function setLed(cls, text){
   el("st-led").className = "led " + cls;
   el("st-last").textContent = text;
@@ -646,6 +697,9 @@ if (location.search.includes("selftest")) {
       el("chGo").click();
       out.push("chCount=" + state.channels.length);
       out.push("newChInPayload=" + (buildPayload().includes("chon_rbc_news")));
+      // возврат к эталону: payload пустой (регрессия «7 дней после 6»)
+      el("perMinus").click();
+      out.push("perBack=" + !buildPayload().includes("per"));
       out.push("payload=" + buildPayload());
       out.push("btn=" + el("btnApply").textContent.trim().slice(0, 10));
       document.title = "SELFTEST " + out.join(" | ");
