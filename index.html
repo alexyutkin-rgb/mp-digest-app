@@ -182,7 +182,7 @@
   <header class="app-head">
     <div class="plate">
       <div class="ttl">MP DIGEST</div>
-      <div class="sub">ПУЛЬТ ДИСПЕТЧЕРА · REV&nbsp;6</div>
+      <div class="sub">ПУЛЬТ ДИСПЕТЧЕРА · REV&nbsp;7</div>
     </div>
   </header>
 
@@ -231,7 +231,15 @@
   <section class="card">
     <div class="card-title">Ручной запуск</div>
     <button class="btn" type="button" id="btnDigest">📰 Дайджест сейчас</button>
-    <p class="hint">Соберёт свежие новости и пришлёт дайджест в чат через 3–7 минут.</p>
+    <p class="hint">Соберёт свежие новости и пришлёт дайджест вам через 2–3 минуты, презентацию — ещё минут через 10. В день рассылки после её времени дайджест уйдёт всей команде.</p>
+  </section>
+
+  <!-- 5. Команда: кто получает дайджест и пользуется пультом -->
+  <section class="card">
+    <div class="card-title">Команда</div>
+    <div id="teamList"></div>
+    <button class="btn" type="button" id="btnShare">🔗 Пригласить коллегу</button>
+    <p class="hint">Коллега открывает бота и жмёт «Start» — владельцу приходит запрос с кнопкой «Разрешить». В команде у всех полный пульт, дайджест по расписанию приходит каждому. Выключите рубильник и нажмите «Применить», чтобы убрать коллегу (может только владелец).</p>
   </section>
 </div>
 
@@ -273,6 +281,7 @@ const state = {
     { name: "Media_RWB", on: true },
     { name: "ozonmarketplace", on: true },
   ],
+  team: [],                               // [{key, name, on}] — on=false → удалить
 };
 const station = { lastCollect: 0, postsWeek: null, lastDigest: "" };
 
@@ -292,6 +301,7 @@ function buildPayload(){
     if (!(key in was)) { if (ch.on) tokens.push("chon_" + key); }
     else if (ch.on !== was[key]) tokens.push((ch.on ? "chon_" : "choff_") + key);
   });
+  state.team.forEach(m => { if (!m.on && /^[0-9a-f]{10}$/.test(m.key)) tokens.push("tmdel_" + m.key); });
   return tokens.join("-");
 }
 
@@ -308,6 +318,7 @@ function describeDiff(){
     if (!(key in was)) parts.push("новый канал @" + ch.name);
     else if (ch.on !== was[key]) parts.push("@" + ch.name + (ch.on ? " вкл" : " выкл"));
   });
+  state.team.forEach(m => { if (!m.on) parts.push("убрать из команды: " + m.name); });
   return parts.join(" · ");
 }
 
@@ -386,6 +397,44 @@ function addChannel(){
   renderChannels(); buzz(); refreshApplyBar();
 }
 el("chGo").addEventListener("click", addChannel);
+
+// ── команда ──────────────────────────────────────────────────────
+function renderTeam(){
+  const box = el("teamList");
+  box.innerHTML = "";
+  if (!state.team.length) {
+    const p = document.createElement("p");
+    p.className = "hint"; p.style.marginTop = "0";
+    p.textContent = "Пока только владелец.";
+    box.appendChild(p);
+    return;
+  }
+  state.team.forEach(m => {
+    const row = document.createElement("div");
+    row.className = "chan";
+    const name = document.createElement("span");
+    name.className = "toggle-name";
+    name.textContent = m.name;
+    const sw = document.createElement("button");
+    sw.type = "button";
+    sw.className = "rail-switch" + (m.on ? " on" : "");
+    sw.innerHTML = '<span class="lever">I·II</span>';
+    sw.addEventListener("click", () => {
+      m.on = !m.on;
+      sw.classList.toggle("on", m.on);
+      buzz(); refreshApplyBar();
+    });
+    row.appendChild(name); row.appendChild(sw);
+    box.appendChild(row);
+  });
+}
+el("btnShare").addEventListener("click", () => {
+  const bot = `https://t.me/${BOT}`;
+  const url = "https://t.me/share/url?url=" + encodeURIComponent(bot) + "&text=" +
+    encodeURIComponent("Дайджест новостей WB и Ozon: откройте бота и нажмите «Start» — я подтвержу доступ.");
+  buzz();
+  if (tg && tg.openTelegramLink) tg.openTelegramLink(url); else location.href = url;
+});
 el("chName").addEventListener("keydown", e => { if (e.key === "Enter") addChannel(); });
 
 // ── статус ───────────────────────────────────────────────────────
@@ -445,6 +494,11 @@ function applySettings(s){
       .filter(c => c && typeof c.name === "string")
       .map(c => ({ name: c.name, on: c.on !== false }));
   }
+  if (Array.isArray(s.team)) {
+    state.team = s.team
+      .filter(m => m && typeof m.key === "string" && typeof m.name === "string")
+      .map(m => ({ key: m.key, name: m.name, on: true }));
+  }
   if (Number.isInteger(s.posts_week)) station.postsWeek = s.posts_week;
   if (typeof s.last_digest === "string") station.lastDigest = s.last_digest;
   return true;
@@ -454,6 +508,7 @@ function renderAll(){
   setDay(state.day);
   el("digestTime").value = state.digestTime;
   renderChannels();
+  renderTeam();
   refreshApplyBar();
 }
 
@@ -496,6 +551,9 @@ if (location.search.includes("selftest")) {
       el("chName").value = "https://t.me/s/rbc_news";
       el("chGo").click();
       out.push("add=" + buildPayload());
+      applySettings({ team: [{ key: "0123456789", name: "Иван П." }] }); renderTeam();
+      document.querySelector("#teamList .rail-switch").click();
+      out.push("team=" + buildPayload().split("-").pop());
       out.push("btn=" + el("btnApply").textContent.trim().slice(0, 10));
       out.push("next=" + el("st-next").textContent);
       document.title = "SELFTEST " + out.join(" | ");
