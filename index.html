@@ -182,7 +182,7 @@
   <header class="app-head">
     <div class="plate">
       <div class="ttl">MP DIGEST</div>
-      <div class="sub">ПУЛЬТ ДИСПЕТЧЕРА · REV&nbsp;7</div>
+      <div class="sub">ПУЛЬТ ДИСПЕТЧЕРА · REV&nbsp;8</div>
     </div>
   </header>
 
@@ -237,9 +237,10 @@
   <!-- 5. Команда: кто получает дайджест и пользуется пультом -->
   <section class="card">
     <div class="card-title">Команда</div>
+    <div id="teamPending"></div>
     <div id="teamList"></div>
     <button class="btn" type="button" id="btnShare">🔗 Пригласить коллегу</button>
-    <p class="hint">Коллега открывает бота и жмёт «Start» — владельцу приходит запрос с кнопкой «Разрешить». В команде у всех полный пульт, дайджест по расписанию приходит каждому. Выключите рубильник и нажмите «Применить», чтобы убрать коллегу (может только владелец).</p>
+    <p class="hint">Коллега открывает бота и жмёт «Start» — владельцу приходит запрос с кнопкой «Разрешить»; запрос виден и здесь, в «Ждут одобрения»: включите рубильник и нажмите «Применить». В команде у всех полный пульт, дайджест по расписанию приходит каждому. Выключите рубильник участника, чтобы убрать его. Одобряет и убирает только владелец.</p>
   </section>
 </div>
 
@@ -282,6 +283,7 @@ const state = {
     { name: "ozonmarketplace", on: true },
   ],
   team: [],                               // [{key, name, on}] — on=false → удалить
+  pending: [],                            // [{key, name, on}] — on=true → одобрить
 };
 const station = { lastCollect: 0, postsWeek: null, lastDigest: "" };
 
@@ -302,6 +304,7 @@ function buildPayload(){
     else if (ch.on !== was[key]) tokens.push((ch.on ? "chon_" : "choff_") + key);
   });
   state.team.forEach(m => { if (!m.on && /^[0-9a-f]{10}$/.test(m.key)) tokens.push("tmdel_" + m.key); });
+  state.pending.forEach(m => { if (m.on && /^[0-9a-f]{10}$/.test(m.key)) tokens.push("tmok_" + m.key); });
   return tokens.join("-");
 }
 
@@ -319,6 +322,7 @@ function describeDiff(){
     else if (ch.on !== was[key]) parts.push("@" + ch.name + (ch.on ? " вкл" : " выкл"));
   });
   state.team.forEach(m => { if (!m.on) parts.push("убрать из команды: " + m.name); });
+  state.pending.forEach(m => { if (m.on) parts.push("одобрить: " + m.name); });
   return parts.join(" · ");
 }
 
@@ -399,34 +403,44 @@ function addChannel(){
 el("chGo").addEventListener("click", addChannel);
 
 // ── команда ──────────────────────────────────────────────────────
+function teamRow(m, box){
+  const row = document.createElement("div");
+  row.className = "chan";
+  const name = document.createElement("span");
+  name.className = "toggle-name";
+  name.textContent = m.name;
+  const sw = document.createElement("button");
+  sw.type = "button";
+  sw.className = "rail-switch" + (m.on ? " on" : "");
+  sw.innerHTML = '<span class="lever">I·II</span>';
+  sw.addEventListener("click", () => {
+    m.on = !m.on;
+    sw.classList.toggle("on", m.on);
+    buzz(); refreshApplyBar();
+  });
+  row.appendChild(name); row.appendChild(sw);
+  box.appendChild(row);
+}
 function renderTeam(){
+  const pb = el("teamPending");
+  pb.innerHTML = "";
+  if (state.pending.length) {
+    const t = document.createElement("p");
+    t.className = "hint"; t.style.margin = "0 2px 4px";
+    t.textContent = "Ждут одобрения:";
+    pb.appendChild(t);
+    state.pending.forEach(m => teamRow(m, pb));
+  }
   const box = el("teamList");
   box.innerHTML = "";
   if (!state.team.length) {
     const p = document.createElement("p");
     p.className = "hint"; p.style.marginTop = "0";
-    p.textContent = "Пока только владелец.";
+    p.textContent = "В команде пока только владелец.";
     box.appendChild(p);
     return;
   }
-  state.team.forEach(m => {
-    const row = document.createElement("div");
-    row.className = "chan";
-    const name = document.createElement("span");
-    name.className = "toggle-name";
-    name.textContent = m.name;
-    const sw = document.createElement("button");
-    sw.type = "button";
-    sw.className = "rail-switch" + (m.on ? " on" : "");
-    sw.innerHTML = '<span class="lever">I·II</span>';
-    sw.addEventListener("click", () => {
-      m.on = !m.on;
-      sw.classList.toggle("on", m.on);
-      buzz(); refreshApplyBar();
-    });
-    row.appendChild(name); row.appendChild(sw);
-    box.appendChild(row);
-  });
+  state.team.forEach(m => teamRow(m, box));
 }
 el("btnShare").addEventListener("click", () => {
   const bot = `https://t.me/${BOT}`;
@@ -499,6 +513,11 @@ function applySettings(s){
       .filter(m => m && typeof m.key === "string" && typeof m.name === "string")
       .map(m => ({ key: m.key, name: m.name, on: true }));
   }
+  if (Array.isArray(s.team_pending)) {
+    state.pending = s.team_pending
+      .filter(m => m && typeof m.key === "string" && typeof m.name === "string")
+      .map(m => ({ key: m.key, name: m.name, on: false }));
+  }
   if (Number.isInteger(s.posts_week)) station.postsWeek = s.posts_week;
   if (typeof s.last_digest === "string") station.lastDigest = s.last_digest;
   return true;
@@ -554,6 +573,9 @@ if (location.search.includes("selftest")) {
       applySettings({ team: [{ key: "0123456789", name: "Иван П." }] }); renderTeam();
       document.querySelector("#teamList .rail-switch").click();
       out.push("team=" + buildPayload().split("-").pop());
+      applySettings({ team_pending: [{ key: "abcdef0123", name: "Георгий Ч." }] }); renderTeam();
+      document.querySelector("#teamPending .rail-switch").click();
+      out.push("ok=" + buildPayload().split("-").pop());
       out.push("btn=" + el("btnApply").textContent.trim().slice(0, 10));
       out.push("next=" + el("st-next").textContent);
       document.title = "SELFTEST " + out.join(" | ");
